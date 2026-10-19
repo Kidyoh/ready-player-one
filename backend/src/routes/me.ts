@@ -4,7 +4,7 @@ import { prisma } from '../db.js';
 import { characterSheet } from '../serialize.js';
 
 /** Avatar keys the app knows how to draw. */
-export const AVATARS = ['sun', 'cactus', 'pyramid', 'camel', 'skull', 'palm'] as const;
+export const AVATARS = ['sun', 'cactus', 'oasis', 'dune', 'dusk', 'ember'] as const;
 
 const patchBody = z
   .object({
