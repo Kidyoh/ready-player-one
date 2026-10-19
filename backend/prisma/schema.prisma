@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Real-life activity types. Each one trains a matching character stat.
+enum Category {
+  WORKOUT // -> Strength
+  READING // -> Intellect
+  CODING // -> Craft
+  MINDFUL // -> Spirit
+}
+
+enum QuestStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+enum EventType {
+  ACTIVITY_LOGGED
+  LEVEL_UP
+  QUEST_STARTED
+  QUEST_STEP_DONE
+  QUEST_COMPLETED
+  PARTY_JOINED
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  passwordHash   String
+  displayName    String
+  avatar         String    @default("sun")
+  totalXp        Int       @default(0)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  /// UTC calendar day (YYYY-MM-DD) of the most recent logged activity.
+  lastActiveDay  String?
+  createdAt      DateTime  @default(now())
+
+  skills      Skill[]
+  activities  Activity[]
+  quests      Quest[]       @relation("QuestOwner")
+  membership  PartyMember?
+  events      Event[]
+  stepsDone   QuestStep[]   @relation("StepCompleter")
+}
+
+model Skill {
+  userId   String
+  category Category
+  xp       Int      @default(0)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  userId      String
+  category    Category
+  title       String
+  minutes     Int
+  note        String?
+  xp          Int
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  questStep   QuestStep?
+
+  @@index([userId, createdAt])
+}
+
+model Quest {
+  id          String      @id @default(cuid())
+  ownerId     String
+  partyId     String?
+  title       String
+  goal        String?
+  category    Category
+  status      QuestStatus @default(ACTIVE)
+  rewardXp    Int
+  dueAt       DateTime?
+  createdAt   DateTime    @default(now())
+  completedAt DateTime?
+  owner       User        @relation("QuestOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  party       Party?      @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  steps       QuestStep[]
+
+  @@index([ownerId, status])
+  @@index([partyId, status])
+}
+
+model QuestStep {
+  id            String    @id @default(cuid())
+  questId       String
+  position      Int
+  title         String
+  /// Minimum minutes an activity of the quest's category must last to auto-complete this step.
+  targetMinutes Int       @default(0)
+  completedAt   DateTime?
+  completedById String?
+  activityId    String?   @unique
+  quest         Quest     @relation(fields: [questId], references: [id], onDelete: Cascade)
+  completedBy   User?     @relation("StepCompleter", fields: [completedById], references: [id], onDelete: SetNull)
+  activity      Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+
+  @@unique([questId, position])
+}
+
+model Party {
+  id         String        @id @default(cuid())
+  name       String
+  inviteCode String        @unique
+  createdAt  DateTime      @default(now())
+  members    PartyMember[]
+  quests     Quest[]
+  events     Event[]
+}
+
+model PartyMember {
+  userId   String   @id
+  partyId  String
+  isLeader Boolean  @default(false)
+  joinedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  party    Party    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@index([partyId])
+}
+
+/// Feed entries. partyId is stamped at write time so a party feed is one indexed query.
+model Event {
+  id        String    @id @default(cuid())
+  userId    String
+  partyId   String?
+  type      EventType
+  message   String
+  xp        Int       @default(0)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  party     Party?    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@index([partyId, createdAt])
+  @@index([userId, createdAt])
+}
