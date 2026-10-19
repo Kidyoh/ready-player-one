@@ -15,6 +15,18 @@ enum Category {
   MINDFUL // -> Spirit
 }
 
+/// Where an activity came from. Synced ones carry an externalId so re-syncing never double counts.
+enum ActivitySource {
+  MANUAL
+  GITHUB
+  HEALTH
+}
+
+enum Provider {
+  GITHUB
+  HEALTH
+}
+
 enum QuestStatus {
   ACTIVE
   COMPLETED
@@ -49,6 +61,8 @@ model User {
   membership  PartyMember?
   events      Event[]
   stepsDone   QuestStep[]   @relation("StepCompleter")
+  integrations Integration[]
+  cheers      Cheer[]
 }
 
 model Skill {
@@ -68,11 +82,28 @@ model Activity {
   minutes     Int
   note        String?
   xp          Int
+  source      ActivitySource @default(MANUAL)
+  externalId  String?
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   questStep   QuestStep?
 
+  @@unique([userId, source, externalId])
   @@index([userId, createdAt])
+}
+
+model Integration {
+  userId         String
+  provider       Provider
+  /// GitHub login, or a device label for Health.
+  externalLogin  String?
+  /// AES-256-GCM encrypted access token (GitHub only).
+  accessTokenEnc String?
+  connectedAt    DateTime  @default(now())
+  lastSyncedAt   DateTime?
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, provider])
 }
 
 model Quest {
@@ -144,7 +175,19 @@ model Event {
   createdAt DateTime  @default(now())
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   party     Party?    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  cheers    Cheer[]
 
   @@index([partyId, createdAt])
   @@index([userId, createdAt])
+}
+
+/// A party member's kudos on a feed event.
+model Cheer {
+  eventId   String
+  userId    String
+  createdAt DateTime @default(now())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([eventId, userId])
 }

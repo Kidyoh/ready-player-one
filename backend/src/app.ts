@@ -8,6 +8,9 @@ import { meRoutes } from './routes/me.js';
 import { activityRoutes } from './routes/activities.js';
 import { questRoutes } from './routes/quests.js';
 import { partyRoutes } from './routes/party.js';
+import { integrationRoutes } from './routes/integrations.js';
+import { GitHubClient } from './integrations/github.js';
+import { TokenBox } from './crypto.js';
 
 declare module '@fastify/jwt' {
   interface FastifyJWT {
@@ -24,10 +27,13 @@ declare module 'fastify' {
 
 export interface AppOptions {
   jwtSecret: string;
+  /** Encrypts third-party tokens at rest. Falls back to the JWT secret in development. */
+  tokenSecret?: string;
+  github?: GitHubClient;
   logger?: boolean;
 }
 
-export async function buildApp({ jwtSecret, logger = false }: AppOptions) {
+export async function buildApp({ jwtSecret, tokenSecret, github = new GitHubClient(), logger = false }: AppOptions) {
   const app = Fastify({ logger });
 
   await app.register(cors, { origin: true });
@@ -58,6 +64,11 @@ export async function buildApp({ jwtSecret, logger = false }: AppOptions) {
   await app.register(activityRoutes, { prefix: '/activities' });
   await app.register(questRoutes, { prefix: '/quests' });
   await app.register(partyRoutes, { prefix: '/party' });
+  await app.register(integrationRoutes, {
+    prefix: '/integrations',
+    github,
+    tokenBox: new TokenBox(tokenSecret ?? jwtSecret),
+  });
 
   return app;
 }

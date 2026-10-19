@@ -84,14 +84,38 @@ export async function partyRoutes(app: FastifyInstance) {
 
   app.get('/feed', async (req) => {
     const { limit } = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50) }).parse(req.query);
-    const membership = await prisma.partyMember.findUnique({ where: { userId: req.user.sub } });
+    const userId = req.user.sub;
+    const membership = await prisma.partyMember.findUnique({ where: { userId } });
     if (!membership) return [];
     const events = await prisma.event.findMany({
       where: { partyId: membership.partyId },
       orderBy: { createdAt: 'desc' },
       take: limit,
-      include: { user: { select: { id: true, displayName: true, avatar: true } } },
+      include: {
+        user: { select: { id: true, displayName: true, avatar: true } },
+        cheers: { select: { userId: true } },
+      },
     });
-    return events;
+    return events.map(({ cheers, ...e }) => ({
+      ...e,
+      cheers: cheers.length,
+      cheeredByMe: cheers.some((c) => c.userId === userId),
+    }));
+  });
+
+  /** Toggles a cheer (kudos) on a party-mate's feed event. */
+  app.post('/feed/:eventId/cheer', async (req) => {
+    const { eventId } = z.object({ eventId: z.string() }).parse(req.params);
+    const userId = req.user.sub;
+    const membership = await prisma.partyMember.findUnique({ where: { userId } });
+    const event = await prisma.event.findUnique({ where: { id: eventId } });
+    if (!membership || !event || event.partyId !== membership.partyId) throw notFound('Event');
+    if (event.userId === userId) throw badRequest("You can't cheer for yourself");
+
+    const key = { eventId_userId: { eventId, userId } };
+    const existing = await prisma.cheer.findUnique({ where: key });
+    if (existing) await prisma.cheer.delete({ where: key });
+    else await prisma.cheer.create({ data: { eventId, userId } });
+    return { cheered: !existing, cheers: await prisma.cheer.count({ where: { eventId } }) };
   });
 }

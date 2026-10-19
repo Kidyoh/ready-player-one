@@ -1,4 +1,4 @@
-import type { Prisma, Category, EventType } from '@prisma/client';
+import type { Prisma, Category, EventType, ActivitySource } from '@prisma/client';
 import { activityXp, dayKey, levelForXp, nextStreak, STAT_NAMES } from '../game.js';
 import { notFound, badRequest, forbidden } from '../errors.js';
 
@@ -121,27 +121,45 @@ export interface LogInput {
   title: string;
   minutes: number;
   note?: string;
+  /** Set for synced activities; (source, externalId) is unique per user. */
+  source?: ActivitySource;
+  externalId?: string;
 }
 
-export async function logActivity(tx: Tx, userId: string, input: LogInput, now = new Date()) {
+export async function logActivity(tx: Tx, userId: string, input: LogInput, at = new Date()) {
   const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
-  const today = dayKey(now);
-  const streak = nextStreak(user.lastActiveDay, today, user.currentStreak);
-  const xp = activityXp(input.category, input.minutes, streak);
+  const day = dayKey(at);
 
-  await tx.user.update({
-    where: { id: userId },
-    data: { currentStreak: streak, longestStreak: Math.max(user.longestStreak, streak), lastActiveDay: today },
-  });
+  // Synced activities can be back-dated. Only a day on or after the last active day moves the streak,
+  // so importing last week's workouts never rewinds it.
+  const advancesStreak = !user.lastActiveDay || day >= user.lastActiveDay;
+  const streak = advancesStreak ? nextStreak(user.lastActiveDay, day, user.currentStreak) : 1;
+  const xp = activityXp(input.category, input.minutes, streak);
+  if (advancesStreak) {
+    await tx.user.update({
+      where: { id: userId },
+      data: { currentStreak: streak, longestStreak: Math.max(user.longestStreak, streak), lastActiveDay: day },
+    });
+  }
 
   const activity = await tx.activity.create({
-    data: { userId, category: input.category, title: input.title, minutes: input.minutes, note: input.note, xp, createdAt: now },
+    data: {
+      userId,
+      category: input.category,
+      title: input.title,
+      minutes: input.minutes,
+      note: input.note,
+      xp,
+      source: input.source,
+      externalId: input.externalId,
+      createdAt: at,
+    },
   });
   await emit(
     tx,
     userId,
     'ACTIVITY_LOGGED',
-    `${user.displayName} logged ${input.minutes} min: ${input.title} (+${xp} ${STAT_NAMES[input.category]})`,
+    `${user.displayName} ${input.source && input.source !== 'MANUAL' ? 'synced' : 'logged'} ${input.minutes} min: ${input.title} (+${xp} ${STAT_NAMES[input.category]})`,
     xp,
   );
   await grantXp(tx, userId, input.category, xp);
@@ -152,7 +170,21 @@ export async function logActivity(tx: Tx, userId: string, input: LogInput, now =
   const newLevel = levelForXp(totalXp);
   const levelUp = newLevel > levelForXp(user.totalXp) ? newLevel : null;
 
-  return { activity, xpGained: xp, streak, levelUp, quest };
+  return { activity, xpGained: xp, streak: advancesStreak ? streak : user.currentStreak, levelUp, quest };
+}
+
+/**
+ * Grows an already-synced activity (e.g. more commits landed on the same day) and pays the XP difference.
+ * Never shrinks one, so a flaky upstream response can't take XP away.
+ */
+export async function growActivity(tx: Tx, userId: string, activityId: string, minutes: number) {
+  const activity = await tx.activity.findUniqueOrThrow({ where: { id: activityId } });
+  if (minutes <= activity.minutes) return 0;
+  const xp = Math.max(activity.xp, activityXp(activity.category, minutes, 1));
+  const delta = xp - activity.xp;
+  await tx.activity.update({ where: { id: activityId }, data: { minutes, xp } });
+  if (delta > 0) await grantXp(tx, userId, activity.category, delta);
+  return delta;
 }
 
 /** Deletes an activity and takes its XP back. A quest step it completed is reopened if the quest is still active. */
@@ -160,6 +192,8 @@ export async function deleteActivity(tx: Tx, userId: string, activityId: string)
   const activity = await tx.activity.findUnique({ where: { id: activityId }, include: { questStep: { include: { quest: true } } } });
   if (!activity) throw notFound('Activity');
   if (activity.userId !== userId) throw forbidden();
+  // A synced entry would just come back on the next sync; disconnecting is the way to stop it.
+  if (activity.source !== 'MANUAL') throw badRequest('Synced activities are managed by their integration');
 
   const step = activity.questStep;
   if (step && step.quest.status === 'ACTIVE') {
