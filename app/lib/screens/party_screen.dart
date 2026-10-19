@@ -45,14 +45,13 @@ class PartyScreen extends StatelessWidget {
             const Icon(Icons.vpn_key_rounded, color: Desert.orange),
             const SizedBox(width: 10),
             const Expanded(child: Text('Invite code', style: TextStyle(fontWeight: FontWeight.w700))),
-            Text(party.inviteCode,
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: 3, color: Desert.outline)),
+            Text(party.inviteCode, style: display(24, color: Desert.outline).copyWith(letterSpacing: 3)),
             const SizedBox(width: 8),
             const Icon(Icons.copy_rounded, size: 18, color: Desert.inkSoft),
           ],
         ),
       ),
-      const _SectionLabel('Leaderboard'),
+      const SectionLabel('Leaderboard'),
       for (final (i, m) in party.members.indexed)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -61,10 +60,8 @@ class PartyScreen extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
               children: [
-                SizedBox(
-                  width: 24,
-                  child: Text('${i + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: Desert.inkSoft)),
-                ),
+                _RankMedal(rank: i + 1),
+                const SizedBox(width: 10),
                 AvatarFace(m.avatar, size: 40),
                 const SizedBox(width: 10),
                 Expanded(
@@ -92,7 +89,7 @@ class PartyScreen extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text('Lv ${m.level}', style: const TextStyle(fontWeight: FontWeight.w900, color: Desert.orange)),
+                    Text('Lv ${m.level}', style: display(20, color: Desert.orange)),
                     Text('${m.totalXp} XP', style: const TextStyle(fontSize: 12, color: Desert.inkSoft)),
                   ],
                 ),
@@ -100,29 +97,49 @@ class PartyScreen extends StatelessWidget {
             ),
           ),
         ),
-      const _SectionLabel('Party feed'),
+      const SectionLabel('Party feed'),
       if (state.feed.isEmpty)
         const EmptyState(icon: Icons.forum_rounded, title: 'Quiet camp', body: 'Activity from your party shows up here.'),
-      for (final e in state.feed)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 6),
-          child: CreamCard(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                AvatarFace(e.user.avatar, size: 32),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+      for (final (i, e) in state.feed.indexed)
+        FadeSlideIn(
+          key: ValueKey('f-${e.id}'),
+          index: i,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: CreamCard(
+              padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+              child: Row(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
                     children: [
-                      Text(e.message, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                      Text(_ago(e.createdAt), style: const TextStyle(fontSize: 11, color: Desert.inkSoft)),
+                      AvatarFace(e.user.avatar, size: 40),
+                      Positioned(
+                        right: -4,
+                        bottom: -4,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: BoxDecoration(color: e.color, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)),
+                          child: Icon(e.icon, color: Colors.white, size: 12),
+                        ),
+                      ),
                     ],
                   ),
-                ),
-                Icon(e.icon, color: e.color),
-              ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(e.message, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                        const SizedBox(height: 2),
+                        Text(_ago(e.createdAt), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Desert.inkSoft)),
+                      ],
+                    ),
+                  ),
+                  if (e.user.id != state.me?.id || e.cheers > 0)
+                    _CheerButton(event: e, mine: e.user.id == state.me?.id),
+                ],
+              ),
             ),
           ),
         ),
@@ -154,15 +171,78 @@ class PartyScreen extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel(this.text);
-  final String text;
+class _RankMedal extends StatelessWidget {
+  const _RankMedal({required this.rank});
+  final int rank;
+
+  static const _medals = [Color(0xFFF2C230), Color(0xFFC9CFD6), Color(0xFFD9925A)];
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 18, 4, 8),
-      child: Text(text, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 18)),
+    final medal = rank <= 3 ? _medals[rank - 1] : null;
+    return Container(
+      width: 30,
+      height: 30,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: medal ?? Colors.transparent,
+        border: medal == null ? null : Border.all(color: Desert.outline.withValues(alpha: 0.5), width: 2),
+      ),
+      child: Text('$rank', style: display(16, color: medal == null ? Desert.inkSoft : Desert.outline)),
+    );
+  }
+}
+
+/// Strava-style kudos: tap to cheer a party-mate's moment. Your own events just show the count.
+class _CheerButton extends StatefulWidget {
+  const _CheerButton({required this.event, required this.mine});
+  final FeedEvent event;
+  final bool mine;
+
+  @override
+  State<_CheerButton> createState() => _CheerButtonState();
+}
+
+class _CheerButtonState extends State<_CheerButton> {
+  int pops = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final e = widget.event;
+    final on = e.cheeredByMe;
+    return Pressable(
+      onTap: widget.mine
+          ? null
+          : () {
+              setState(() => pops++);
+              guard(context, () => context.read<AppState>().toggleCheer(e));
+            },
+      child: TweenAnimationBuilder<double>(
+        key: ValueKey(pops),
+        tween: Tween(begin: pops == 0 ? 1 : 1.35, end: 1),
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOutBack,
+        builder: (_, scale, child) => Transform.scale(scale: scale, child: child),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: on ? Desert.orange : Colors.white.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: on ? const Color(0xFFD9800F) : Desert.creamDeep, width: 2),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('👏', style: TextStyle(fontSize: 14, color: on ? Colors.white : null)),
+              if (e.cheers > 0) ...[
+                const SizedBox(width: 4),
+                Text('${e.cheers}', style: TextStyle(fontWeight: FontWeight.w900, color: on ? Colors.white : Desert.ink)),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -198,7 +278,7 @@ class _NoPartyState extends State<_NoParty> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const ScreenTitle('Party'),
+        const ScreenTitle('Party', subtitle: 'Adventure is better together'),
         const Padding(
           padding: EdgeInsets.fromLTRB(4, 0, 4, 14),
           child: Text(

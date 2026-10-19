@@ -73,13 +73,30 @@ class Character extends Player {
         longestStreak = j['longestStreak'] as int,
         progress = LevelProgress.fromJson(j['progress'] as Map<String, dynamic>),
         stats = (j['stats'] as List).map((s) => Stat.fromJson(s as Map<String, dynamic>)).toList(),
+        week = ((j['week'] as List?) ?? const [])
+            .map((d) => DayXp(DateTime.parse(d['day'] as String), d['xp'] as int))
+            .toList(),
         super.fromJson();
 
   final String email;
   final int longestStreak;
   final LevelProgress progress;
   final List<Stat> stats;
+
+  /// XP per day for the last seven days, oldest first; the last entry is today.
+  final List<DayXp> week;
+
+  int get todayXp => week.isEmpty ? 0 : week.last.xp;
 }
+
+class DayXp {
+  const DayXp(this.day, this.xp);
+  final DateTime day;
+  final int xp;
+}
+
+/// The XP target behind the daily ring on the Hero screen.
+const dailyXpGoal = 150;
 
 class Activity {
   Activity.fromJson(Map<String, dynamic> j)
@@ -89,9 +106,11 @@ class Activity {
         minutes = j['minutes'] as int,
         note = j['note'] as String?,
         xp = j['xp'] as int,
+        source = ActivitySource.values.byName(((j['source'] as String?) ?? 'MANUAL').toLowerCase()),
         createdAt = DateTime.parse(j['createdAt'] as String).toLocal();
 
   final String id;
+  final ActivitySource source;
   final Category category;
   final String title;
   final int minutes;
@@ -99,6 +118,8 @@ class Activity {
   final int xp;
   final DateTime createdAt;
 }
+
+enum ActivitySource { manual, github, health }
 
 class MiniUser {
   MiniUser.fromJson(Map<String, dynamic> j)
@@ -184,9 +205,13 @@ class FeedEvent {
         message = j['message'] as String,
         xp = j['xp'] as int,
         createdAt = DateTime.parse(j['createdAt'] as String).toLocal(),
-        user = MiniUser.fromJson(j['user'] as Map<String, dynamic>);
+        user = MiniUser.fromJson(j['user'] as Map<String, dynamic>),
+        cheers = j['cheers'] as int? ?? 0,
+        cheeredByMe = j['cheeredByMe'] as bool? ?? false;
 
   final String id;
+  final int cheers;
+  final bool cheeredByMe;
   final String type;
   final String message;
   final int xp;
@@ -240,4 +265,57 @@ class QuestPreview {
   final int rewardXp;
   final int durationDays;
   final int stepCount;
+}
+
+class IntegrationStatus {
+  IntegrationStatus.fromJson(Map<String, dynamic> j)
+      : connected = j['connected'] as bool,
+        login = j['login'] as String?,
+        lastSyncedAt = j['lastSyncedAt'] == null ? null : DateTime.parse(j['lastSyncedAt'] as String).toLocal(),
+        deviceFlow = j['deviceFlow'] as bool? ?? false;
+
+  const IntegrationStatus.disconnected()
+      : connected = false,
+        login = null,
+        lastSyncedAt = null,
+        deviceFlow = false;
+
+  final bool connected;
+  final String? login;
+  final DateTime? lastSyncedAt;
+
+  /// GitHub only: whether the server can do "Sign in with GitHub" (device flow).
+  final bool deviceFlow;
+}
+
+class SyncSummary {
+  SyncSummary.fromJson(Map<String, dynamic> j)
+      : imported = j['imported'] as int,
+        updated = j['updated'] as int,
+        xpGained = j['xpGained'] as int,
+        levelUp = j['levelUp'] as int?,
+        questsAdvanced = (j['questsAdvanced'] as List).cast<String>();
+
+  final int imported;
+  final int updated;
+  final int xpGained;
+  final int? levelUp;
+  final List<String> questsAdvanced;
+
+  bool get changed => imported > 0 || updated > 0;
+}
+
+class DeviceFlow {
+  DeviceFlow.fromJson(Map<String, dynamic> j)
+      : deviceCode = j['deviceCode'] as String,
+        userCode = j['userCode'] as String,
+        verificationUri = j['verificationUri'] as String,
+        interval = j['interval'] as int,
+        expiresIn = j['expiresIn'] as int;
+
+  final String deviceCode;
+  final String userCode;
+  final String verificationUri;
+  final int interval;
+  final int expiresIn;
 }

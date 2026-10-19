@@ -60,7 +60,13 @@ class _TitleScreenState extends State<TitleScreen> {
                 child: Column(
                   children: [
                     const _Logo(),
-                    const SizedBox(height: 36),
+                    const SizedBox(height: 14),
+                    const Text(
+                      'Workouts, reading and code earn XP.\nYour goals become quests.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15),
+                    ),
+                    const SizedBox(height: 30),
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 200),
                       child: mode == _Mode.title ? _buttons() : _form(),
@@ -97,7 +103,7 @@ class _TitleScreenState extends State<TitleScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(signUp ? 'Create your hero' : 'Welcome back, adventurer',
-                style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                style: display(22)),
             const SizedBox(height: 14),
             if (signUp) ...[
               Row(
@@ -154,16 +160,14 @@ class _Logo extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const shadow = [Shadow(color: Desert.outline, offset: Offset(0, 4))];
+    const shadow = [Shadow(color: Desert.outline, offset: Offset(0, 5))];
     return Stack(
       clipBehavior: Clip.none,
       children: [
-        const Column(
+        Column(
           children: [
-            Text('LIFE',
-                style: TextStyle(fontSize: 76, height: 0.95, fontWeight: FontWeight.w900, color: Colors.white, shadows: shadow)),
-            Text('RPG',
-                style: TextStyle(fontSize: 76, height: 0.95, fontWeight: FontWeight.w900, color: Colors.white, shadows: shadow)),
+            Text('LIFE', style: display(84, color: Colors.white, weight: FontWeight.w700, shadows: shadow).copyWith(height: 0.9)),
+            Text('RPG', style: display(84, color: Desert.mustard, weight: FontWeight.w700, shadows: shadow).copyWith(height: 0.9)),
           ],
         ),
         Positioned(
@@ -178,8 +182,7 @@ class _Logo extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.white, width: 2),
               ),
-              child: const Text('real life',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic)),
+              child: Text('real life', style: display(18, color: Colors.white, weight: FontWeight.w600)),
             ),
           ),
         ),

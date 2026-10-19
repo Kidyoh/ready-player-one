@@ -1,5 +1,6 @@
 package dev.readyplayerone.life_rpg
 
-import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// Health Connect's permission flow needs a FragmentActivity host.
+class MainActivity : FlutterFragmentActivity()

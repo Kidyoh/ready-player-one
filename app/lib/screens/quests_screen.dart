@@ -30,7 +30,7 @@ class _QuestsScreenState extends State<QuestsScreen> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const ScreenTitle('Quests'),
+            ScreenTitle('Quests', subtitle: 'Real goals, one step at a time'),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: PillTabs<QuestStatus>(
@@ -57,8 +57,12 @@ class _QuestsScreenState extends State<QuestsScreen> {
                         title: tab == QuestStatus.active ? 'No active quests' : 'Nothing here yet',
                         body: 'Turn a real goal, like "Run a 5k" or "Finish a book", into a quest with +.',
                       ),
-                    for (final q in quests)
-                      Padding(padding: const EdgeInsets.only(bottom: 10), child: _QuestCard(quest: q)),
+                    for (final (i, q) in quests.indexed)
+                      FadeSlideIn(
+                        key: ValueKey('q-${q.id}'),
+                        index: i,
+                        child: Padding(padding: const EdgeInsets.only(bottom: 12), child: _QuestCard(quest: q)),
+                      ),
                   ],
                 ),
               ),
@@ -85,6 +89,9 @@ class _QuestCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final q = quest;
+    // Habitica-style: the quest is a boss whose HP is the steps still standing.
+    final hp = 1 - q.fraction;
+    final remaining = q.steps.length - q.doneCount;
     return CreamCard(
       onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => QuestDetailScreen(questId: q.id))),
       child: Column(
@@ -92,34 +99,66 @@ class _QuestCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CategoryBadge(color: q.category.color, icon: q.category.icon, size: 36),
-              const SizedBox(width: 10),
+              CategoryBadge(color: q.category.color, icon: q.category.icon, size: 46),
+              const SizedBox(width: 12),
               Expanded(
-                child: Text(q.title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-              ),
-              if (q.isParty)
-                const Padding(
-                  padding: EdgeInsets.only(left: 6),
-                  child: Icon(Icons.groups_rounded, color: Desert.teal, size: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(q.title, style: display(20)),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        if (q.isParty) ...[
+                          const Icon(Icons.groups_rounded, color: Desert.teal, size: 16),
+                          const SizedBox(width: 4),
+                          const Text('Party · ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Desert.teal)),
+                        ],
+                        Text(
+                          q.dueAt != null && q.status == QuestStatus.active
+                              ? 'Due ${DateFormat.MMMd().format(q.dueAt!)}'
+                              : '${q.category.label} → ${q.category.stat}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Desert.inkSoft),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-              const Icon(Icons.chevron_right_rounded, color: Desert.inkSoft),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFE2B8),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Desert.orange, width: 1.5),
+                ),
+                child: Text('${q.rewardXp} XP', style: display(14, color: const Color(0xFFB86A00))),
+              ),
             ],
           ),
-          const SizedBox(height: 10),
-          XpBar(fraction: q.fraction, color: q.category.color),
-          const SizedBox(height: 6),
-          Row(
-            children: [
-              Text('${q.doneCount}/${q.steps.length} steps',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Desert.inkSoft)),
-              const Spacer(),
-              if (q.dueAt != null && q.status == QuestStatus.active)
-                Text('Due ${DateFormat.MMMd().format(q.dueAt!)} · ',
-                    style: const TextStyle(fontSize: 12, color: Desert.inkSoft)),
-              Text('${q.rewardXp} XP reward',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Desert.orange)),
-            ],
-          ),
+          const SizedBox(height: 14),
+          if (q.status == QuestStatus.active) ...[
+            Row(
+              children: [
+                const Icon(Icons.whatshot_rounded, size: 16, color: Color(0xFF8C4A3A)),
+                const SizedBox(width: 4),
+                const Text('BOSS HP', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1, color: Color(0xFF8C4A3A))),
+                const Spacer(),
+                Text('$remaining / ${q.steps.length}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+              ],
+            ),
+            const SizedBox(height: 5),
+            XpBar(fraction: hp, color: const Color(0xFFD9534A), height: 12),
+          ] else
+            Row(
+              children: [
+                Icon(q.status == QuestStatus.completed ? Icons.emoji_events_rounded : Icons.flag_outlined,
+                    color: q.status == QuestStatus.completed ? Desert.orange : Desert.inkSoft),
+                const SizedBox(width: 6),
+                Text(q.status == QuestStatus.completed ? 'Boss defeated!' : 'Abandoned',
+                    style: const TextStyle(fontWeight: FontWeight.w900)),
+              ],
+            ),
         ],
       ),
     );
@@ -151,7 +190,7 @@ class QuestDetailScreen extends StatelessWidget {
                             quest.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w900),
+                            style: display(24, color: Colors.white, weight: FontWeight.w600, shadows: titleShadow),
                           ),
                         ),
                         if (quest.status == QuestStatus.active && quest.owner.id == state.me?.id)
@@ -180,6 +219,7 @@ class QuestDetailScreen extends StatelessWidget {
                     Expanded(
                       child: QuestMap(
                         quest: quest,
+                        avatarKey: state.me?.avatar ?? 'sun',
                         onStepTap: (step) => _stepSheet(context, quest, step),
                       ),
                     ),
@@ -351,7 +391,7 @@ class _NewQuestScreenState extends State<NewQuestScreen> {
               const Row(
                 children: [
                   BackButton(color: Colors.white),
-                  Text('New quest', style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w900)),
+                  Text('New quest', style: TextStyle(fontFamily: 'Fredoka', color: Colors.white, fontSize: 26, fontWeight: FontWeight.w600)),
                 ],
               ),
               const SizedBox(height: 8),

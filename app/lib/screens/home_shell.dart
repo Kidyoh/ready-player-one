@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
+import '../app_state.dart';
 import '../theme.dart';
 import '../widgets/desert.dart';
 import 'character_screen.dart';
@@ -15,8 +18,9 @@ class HomeShell extends StatefulWidget {
   State<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends State<HomeShell> with WidgetsBindingObserver {
   int index = 0;
+  late final AppState state = context.read<AppState>();
 
   static const _tabs = [
     (Icons.person_rounded, 'Hero'),
@@ -24,6 +28,33 @@ class _HomeShellState extends State<HomeShell> {
     (Icons.map_rounded, 'Quests'),
     (Icons.groups_rounded, 'Party'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    state.notices.addListener(_showNotice);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    state.notices.removeListener(_showNotice);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycle) {
+    // Coming back from a run or a coding session is exactly when new XP is waiting.
+    if (lifecycle == AppLifecycleState.resumed) state.syncAll();
+  }
+
+  void _showNotice() {
+    final message = state.notices.value;
+    if (message == null || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+    state.notices.value = null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +86,10 @@ class _HomeShellState extends State<HomeShell> {
                     icon: _tabs[i].$1,
                     label: _tabs[i].$2,
                     selected: i == index,
-                    onTap: () => setState(() => index = i),
+                    onTap: () {
+                      if (i != index) HapticFeedback.selectionClick();
+                      setState(() => index = i);
+                    },
                   ),
               ],
             ),
@@ -83,30 +117,37 @@ class _TabButton extends StatelessWidget {
       child: GestureDetector(
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 150),
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: selected ? Desert.mustard : Desert.creamDeep,
-                shape: BoxShape.circle,
-                border: Border.all(color: Desert.outline, width: 2.5),
+        child: SizedBox(
+          width: 72,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              AnimatedScale(
+                scale: selected ? 1.12 : 1,
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutBack,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: selected ? Desert.mustard : Desert.creamDeep,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Desert.outline, width: 2.5),
+                    boxShadow: [
+                      BoxShadow(color: selected ? const Color(0xFF2E2016) : Colors.transparent, offset: const Offset(0, 3)),
+                    ],
+                  ),
+                  child: Icon(icon, color: Desert.outline, size: 24),
+                ),
               ),
-              child: Icon(icon, color: Desert.outline, size: 24),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? Desert.mustard : Desert.creamDeep,
-                fontSize: 11,
-                fontWeight: FontWeight.w800,
+              const SizedBox(height: 5),
+              Text(
+                label,
+                style: display(13, color: selected ? Desert.mustard : Desert.creamDeep, weight: FontWeight.w600),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

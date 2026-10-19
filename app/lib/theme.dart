@@ -19,6 +19,9 @@ class Desert {
   static const teal = Color(0xFF3FA38F);
   static const stone = Color(0xFFB9A88A);
 
+  static const github = Color(0xFF24292F);
+  static const health = Color(0xFFE5486B);
+
   static const skyGradient = LinearGradient(
     begin: Alignment.topCenter,
     end: Alignment.bottomCenter,
@@ -27,9 +30,16 @@ class Desert {
   );
 }
 
+/// Rounded display face for numbers and titles; Nunito carries body text.
+TextStyle display(double size, {Color color = Desert.ink, FontWeight weight = FontWeight.w700, List<Shadow>? shadows}) =>
+    TextStyle(fontFamily: 'Fredoka', fontSize: size, fontWeight: weight, color: color, height: 1.05, shadows: shadows);
+
+const titleShadow = [Shadow(color: Color(0x663B2A1A), offset: Offset(0, 3))];
+
 ThemeData buildTheme() {
   final base = ThemeData(
     useMaterial3: true,
+    fontFamily: 'Nunito',
     colorScheme: ColorScheme.fromSeed(
       seedColor: Desert.orange,
       primary: Desert.orange,

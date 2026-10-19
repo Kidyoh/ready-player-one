@@ -6,6 +6,10 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Life RPG reads your workouts and mindful minutes so they earn XP automatically.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>Life RPG does not write to Apple Health.</string>
 	<key>CFBundleDisplayName</key>
 	<string>Life RPG</string>
 	<key>CFBundleExecutable</key>

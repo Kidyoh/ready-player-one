@@ -4,10 +4,17 @@ A real-life game layer: your actual life as an RPG. Workouts, reading, coding an
 in matching character stats, your real goals turn into quests, and friends join as a party.
 
 <p>
-  <img src="docs/screenshots/title.png" width="180" alt="Title screen">
-  <img src="docs/screenshots/hero.png" width="180" alt="Character sheet">
-  <img src="docs/screenshots/quest-map.png" width="180" alt="Quest map">
-  <img src="docs/screenshots/party.png" width="180" alt="Party">
+  <img src="docs/screenshots/title.png" width="160" alt="Title screen">
+  <img src="docs/screenshots/hero.png" width="160" alt="Hero: level ring, daily goal, streak, weekly XP">
+  <img src="docs/screenshots/stats.png" width="160" alt="Stat radar">
+  <img src="docs/screenshots/log.png" width="160" alt="Adventure log with GitHub and Health entries">
+</p>
+<p>
+  <img src="docs/screenshots/quests.png" width="160" alt="Quests with boss HP">
+  <img src="docs/screenshots/quest-map.png" width="160" alt="Quest map">
+  <img src="docs/screenshots/party.png" width="160" alt="Party leaderboard and feed">
+  <img src="docs/screenshots/auto-sync.png" width="160" alt="Auto-sync settings">
+  <img src="docs/screenshots/sync-result.png" width="160" alt="GitHub sync result">
 </p>
 
 | Folder     | What                                                                 |
@@ -33,9 +40,47 @@ in matching character stats, your real goals turn into quests, and friends join 
   clears the next open step automatically. You mark the boss step done yourself once you've really hit the goal.
   Finishing the quest pays its reward into the quest's stat.
 - **Parties.** Create a party and share the 6-character invite code. A party quest can be advanced by any member,
-  and everyone in the party gets the reward. The party feed shows logs, level-ups and quest progress.
+  and everyone in the party gets the reward. The party feed shows logs, level-ups and quest progress, and
+  party-mates can cheer each other's moments.
+- **Auto-sync.** Connect GitHub and Health Connect (Android) or Apple Health (iOS), and real activity earns XP
+  without manual logging. See [Integrations](#integrations).
 
 All rules live in [`backend/src/game.ts`](backend/src/game.ts) as pure functions.
+
+## Integrations
+
+### GitHub → Craft
+
+The API reads your daily **contribution count** (commits, PRs, reviews and issues: the same number as your
+profile graph) through GitHub's GraphQL API. Each contribution counts as ~10 minutes of coding, up to 2 hours
+a day. Each day becomes one Coding activity keyed by date, so re-syncing never double counts. If more
+contributions land later the same day, that day's activity grows.
+
+There are two ways to connect:
+
+- **Sign in with GitHub (recommended).** Create an OAuth app at *GitHub → Settings → Developer settings →
+  OAuth Apps*, tick **Enable Device Flow**, and set `GITHUB_CLIENT_ID` in `backend/.env`. The app then shows
+  a code and opens github.com/login/device. No client secret is needed.
+- **Personal access token.** If `GITHUB_CLIENT_ID` isn't set, the app asks for a classic token with only the
+  `read:user` scope.
+
+Tokens are stored AES-256-GCM encrypted with `TOKEN_ENCRYPTION_KEY`.
+
+### Health Connect / Apple Health → Strength & Spirit
+
+Health data lives on the phone, so the app reads exercise sessions (and mindful minutes on iOS) with the
+[`health`](https://pub.dev/packages/health) package and uploads them. Each session is keyed by its
+platform ID, so nothing is counted twice. The app syncs on launch and whenever it returns to the foreground.
+
+- **Android:** needs the Health Connect app (built into Android 14+). The manifest already declares
+  `READ_EXERCISE`, the permissions-rationale intent and the privacy-policy activity alias, and `minSdk` is 26.
+  Before publishing to Play, point the alias at a real privacy policy screen.
+- **iOS:** usage strings and the HealthKit entitlement are already in place. In Xcode, make sure the Runner
+  target's *Signing & Capabilities* shows **HealthKit** for your team.
+
+On first connect both sources import the previous 7 days. Older history is ignored so connecting doesn't
+dump months of XP at once. Back-dated imports never reset your streak. Synced activities can't be deleted
+from the log; disconnect the source instead.
 
 ## Running it
 
@@ -49,7 +94,7 @@ docker compose up -d db        # Postgres 16 on :5432, creates `rpo` and `rpo_te
 
 ```sh
 cd backend
-cp .env.example .env           # set a real JWT_SECRET outside local dev
+cp .env.example .env           # set real JWT_SECRET / TOKEN_ENCRYPTION_KEY outside local dev
 npm install
 npx prisma migrate deploy
 npm run dev                    # http://localhost:8080
@@ -89,7 +134,14 @@ All routes except `/auth/*` and `/health` need `Authorization: Bearer <token>`.
 | POST | `/quests/:id/abandon` | Owner only |
 | GET / POST | `/party` | Get, or create with `{name}` |
 | POST | `/party/join` · `/party/leave` | Join with `{code}`. Leadership passes on when the leader leaves |
-| GET | `/party/feed` | Latest party events |
+| GET | `/party/feed` | Latest party events, with cheer counts |
+| POST | `/party/feed/:eventId/cheer` | Toggle a cheer on a party-mate's event |
+| GET | `/integrations` | GitHub and Health connection status |
+| POST | `/integrations/github/token` | `{token}`: connect with a personal access token and sync |
+| POST | `/integrations/github/device/start` · `/poll` | OAuth device flow (`/poll` takes `{deviceCode}`) |
+| POST | `/integrations/github/sync` | Pull new contributions |
+| POST | `/integrations/health/import` | `{device, sessions: [{id, kind, title, start, end}]}` from the phone |
+| DELETE | `/integrations/github` · `/integrations/health` | Disconnect (earned XP stays) |
 
 ## Not done yet
 
@@ -97,4 +149,6 @@ All routes except `/auth/*` and `/health` need `Authorization: Bearer <token>`.
   Move it to secure storage before shipping.
 - No rate limiting on `/auth`.
 - Streaks use UTC days, not the player's own timezone.
-- Activities are on the honor system: nothing verifies them yet (e.g. via Health Connect, GitHub or Goodreads).
+- Manual logs are still on the honor system. Synced GitHub and Health activity is the verified path.
+- Health sync only runs while the app is open (on launch and resume), not in the background.
+- On Android the `health` plugin exposes workouts but not mindfulness, so Spirit only syncs from Apple Health.

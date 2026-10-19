@@ -124,4 +124,44 @@ class Api {
 
   Future<List<FeedEvent>> feed() async =>
       (await _send('GET', '/party/feed') as List).map((e) => FeedEvent.fromJson(e as Map<String, dynamic>)).toList();
+
+  Future<void> cheer(String eventId) => _send('POST', '/party/feed/$eventId/cheer');
+
+  // Integrations
+  Future<(IntegrationStatus, IntegrationStatus)> integrations() async {
+    final j = await _send('GET', '/integrations') as Map<String, dynamic>;
+    return (
+      IntegrationStatus.fromJson(j['github'] as Map<String, dynamic>),
+      IntegrationStatus.fromJson(j['health'] as Map<String, dynamic>),
+    );
+  }
+
+  Future<SyncSummary> connectGitHubToken(String token) async {
+    final j = await _send('POST', '/integrations/github/token', {'token': token});
+    return SyncSummary.fromJson(j['sync'] as Map<String, dynamic>);
+  }
+
+  Future<DeviceFlow> startGitHubDeviceFlow() async =>
+      DeviceFlow.fromJson(await _send('POST', '/integrations/github/device/start') as Map<String, dynamic>);
+
+  /// Returns null while the user hasn't approved yet; throws if the code expired or was denied.
+  Future<SyncSummary?> pollGitHubDeviceFlow(String deviceCode) async {
+    final j = await _send('POST', '/integrations/github/device/poll', {'deviceCode': deviceCode}) as Map<String, dynamic>;
+    return switch (j['status']) {
+      'connected' => SyncSummary.fromJson(j['sync'] as Map<String, dynamic>),
+      'pending' || 'slow_down' => null,
+      'denied' => throw ApiException(400, 'GitHub access was denied'),
+      _ => throw ApiException(400, 'The GitHub code expired. Try again.'),
+    };
+  }
+
+  Future<SyncSummary> syncGitHub() async =>
+      SyncSummary.fromJson(await _send('POST', '/integrations/github/sync') as Map<String, dynamic>);
+
+  Future<void> disconnectGitHub() => _send('DELETE', '/integrations/github');
+
+  Future<SyncSummary> importHealth(String device, List<Map<String, Object>> sessions) async => SyncSummary.fromJson(
+      await _send('POST', '/integrations/health/import', {'device': device, 'sessions': sessions}) as Map<String, dynamic>);
+
+  Future<void> disconnectHealth() => _send('DELETE', '/integrations/health');
 }
