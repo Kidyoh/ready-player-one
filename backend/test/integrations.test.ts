@@ -106,6 +106,13 @@ describe('github', () => {
     expect(grown.xpGained).toBeGreaterThan(0);
     expect((await p.call('GET', '/me')).json().totalXp).toBe(before + grown.xpGained);
 
+    // The whole sync shows up as one feed line, not one per day.
+    const events = await prisma.event.findMany({ where: { userId: p.user.id, type: 'ACTIVITY_LOGGED' }, orderBy: { createdAt: 'asc' } });
+    expect(events.map((e) => e.message)).toEqual([
+      expect.stringContaining('synced 2 new entries from GitHub'),
+      expect.stringContaining('synced updates from GitHub'),
+    ]);
+
     const status = (await p.call('GET', '/integrations')).json();
     expect(status.github).toMatchObject({ connected: true, login: 'octo-tok-alpha-123', deviceFlow: true });
 

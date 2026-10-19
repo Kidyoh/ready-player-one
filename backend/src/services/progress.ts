@@ -9,7 +9,7 @@ async function partyIdOf(tx: Tx, userId: string): Promise<string | null> {
   return m?.partyId ?? null;
 }
 
-async function emit(tx: Tx, userId: string, type: EventType, message: string, xp = 0) {
+export async function emit(tx: Tx, userId: string, type: EventType, message: string, xp = 0) {
   const partyId = await partyIdOf(tx, userId);
   await tx.event.create({ data: { userId, partyId, type, message, xp } });
 }
@@ -124,6 +124,8 @@ export interface LogInput {
   /** Set for synced activities; (source, externalId) is unique per user. */
   source?: ActivitySource;
   externalId?: string;
+  /** Skip the per-activity feed event; syncs post one summary instead of flooding the party feed. */
+  quiet?: boolean;
 }
 
 export async function logActivity(tx: Tx, userId: string, input: LogInput, at = new Date()) {
@@ -155,13 +157,15 @@ export async function logActivity(tx: Tx, userId: string, input: LogInput, at = 
       createdAt: at,
     },
   });
-  await emit(
-    tx,
-    userId,
-    'ACTIVITY_LOGGED',
-    `${user.displayName} ${input.source && input.source !== 'MANUAL' ? 'synced' : 'logged'} ${input.minutes} min: ${input.title} (+${xp} ${STAT_NAMES[input.category]})`,
-    xp,
-  );
+  if (!input.quiet) {
+    await emit(
+      tx,
+      userId,
+      'ACTIVITY_LOGGED',
+      `${user.displayName} logged ${input.minutes} min: ${input.title} (+${xp} ${STAT_NAMES[input.category]})`,
+      xp,
+    );
+  }
   await grantXp(tx, userId, input.category, xp);
   const quest = await autoAdvanceQuest(tx, userId, input.category, input.minutes, activity.id);
 

@@ -1,6 +1,6 @@
 import type { Category, Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
-import { growActivity, logActivity } from '../services/progress.js';
+import { emit, growActivity, logActivity } from '../services/progress.js';
 import { type GitHubClient, minutesForContributions } from './github.js';
 import type { TokenBox } from '../crypto.js';
 import { badRequest } from '../errors.js';
@@ -40,11 +40,19 @@ async function importOne(
     }
     return;
   }
-  const result = await logActivity(tx, userId, { ...item }, item.at);
+  const result = await logActivity(tx, userId, { ...item, quiet: true }, item.at);
   summary.imported++;
   summary.xpGained += result.xpGained;
   if (result.levelUp) summary.levelUp = Math.max(summary.levelUp ?? 0, result.levelUp);
   if (result.quest) summary.questsAdvanced.push(result.quest.questTitle);
+}
+
+/** One feed line per sync, however many days or sessions it brought in. */
+async function announce(tx: Tx, userId: string, summary: SyncSummary, from: string) {
+  if (summary.xpGained <= 0) return;
+  const { displayName } = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { displayName: true } });
+  const what = summary.imported > 0 ? `${summary.imported} new ${summary.imported === 1 ? 'entry' : 'entries'}` : 'updates';
+  await emit(tx, userId, 'ACTIVITY_LOGGED', `${displayName} synced ${what} from ${from} (+${summary.xpGained} XP)`, summary.xpGained);
 }
 
 /** Earliest instant we import from: a week before connecting, or a couple of days before the last sync. */
@@ -79,6 +87,7 @@ export async function syncGitHub(userId: string, github: GitHubClient, box: Toke
       where: { userId_provider: { userId, provider: 'GITHUB' } },
       data: { lastSyncedAt: now },
     });
+    await announce(tx, userId, summary, 'GitHub');
   });
   return summary;
 }
@@ -119,6 +128,7 @@ export async function importHealth(userId: string, sessions: HealthSession[], de
       });
     }
     await tx.integration.update({ where: { userId_provider: { userId, provider: 'HEALTH' } }, data: { lastSyncedAt: now } });
+    await announce(tx, userId, summary, device ?? 'Health');
   });
   return summary;
 }
